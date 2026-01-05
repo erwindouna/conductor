@@ -1,0 +1,15 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: conductor-devcontainer
+    volumes:
+      - uv-cache:/home/vscode/.cache/uv
+      - ./config:/config
+    environment:
+      DEBUG: "true"
+    shm_size: "256mb"
+
+volumes:
+  uv-cache:
