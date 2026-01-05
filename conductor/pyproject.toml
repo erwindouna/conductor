@@ -19,6 +19,7 @@ keywords = [
 dependencies = [
   "fastapi[standard]>=0.128",
   "uvicorn[standard]>=0.29",
+  "websockets>=15.0.1",
 ]
 
 [project.optional-dependencies]
