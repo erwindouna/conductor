@@ -20,6 +20,7 @@ dependencies = [
   "aiohttp>=3.13.3",
   "asyncio>=4.0.0",
   "fastapi[standard]>=0.128",
+  "pydantic>=2.12.5",
   "uvicorn[standard]>=0.29",
   "websockets>=15.0.1",
 ]

@@ -177,6 +177,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "asyncio" },
     { name = "fastapi", extra = ["standard"] },
+    { name = "pydantic" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
 ]
@@ -193,6 +194,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "asyncio", specifier = ">=4.0.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.128" },
+    { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },

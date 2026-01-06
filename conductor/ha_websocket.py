@@ -8,7 +8,12 @@ from typing import Any
 
 import aiohttp
 
+from conductor.models.ha_ws import AuthFrame, WSType, parse_incoming
+
 _LOGGER = logging.getLogger(__name__)
+
+HA_WS_TIMEOUT = 10
+HA_WS_CLIENT_NAME = "conductor-ha-ws-client"
 
 @dataclass
 class HAWebSocketClientConfig:
@@ -22,30 +27,30 @@ class HAWebSocketClient:
 
     def __init__(self, config: HAWebSocketClientConfig)-> None:
         """Initialize the WebSocket handler."""
-        self.config = config
+        self.config: HAWebSocketClientConfig = config
         self._task: asyncio.Task[None] | None= None
         self._stop = asyncio.Event()
         self._session: aiohttp.ClientSession | None = None
         self._ws: aiohttp.ClientWebSocketResponse | None = None
-        self._msg_id = 0
+        self._msg_id: int = 0
 
     def start(self) -> None:
-        """Start the WebSocket connection."""
+        """Start the Websocket connection."""
         if self._task is not None and not self._task.done():
-            _LOGGER.error("WebSocket client is already running")
+            _LOGGER.error("Websocket client is already running")
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self._run(), name="ha-ws-client")
+        self._task = asyncio.create_task(self._run(), name=HA_WS_CLIENT_NAME)
 
     async def stop(self) -> None:
-        """Stop the WebSocket connection."""
+        """Stop the Websocket connection."""
         self._stop.set()
         if self._task:
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError as err:
-                raise HAWebSocketError("WebSocket task was cancelled") from err
+                raise HAWebSocketError("Websocket task was cancelled") from err
 
         if self._ws and not self._ws.closed:
             await self._ws.close()
@@ -78,33 +83,39 @@ class HAWebSocketClient:
             await asyncio.sleep(backoff)
             backoff = min(max_backoff, backoff * 2)
 
-    async def _connect_and_listen(self) -> None:
-        """Connect to Home Assistant WebSocket and listen for events."""
+    async def connect(self) -> None:
+        """Connect to Home Assistant WebSocket."""
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=None)
         self._session = aiohttp.ClientSession(timeout=timeout)
 
-        _LOGGER.info("Connecting to %s", self.config.ws_url)
+        _LOGGER.info("Connecting to %s, timeout set to %s seconds", self.config.ws_url, HA_WS_TIMEOUT)
         self._ws = await self._session.ws_connect(
             url=self.config.ws_url,
             heartbeat=30.0,  # Do ping/pong automatically
             autoping=True,
-            timeout=10.0,
         )
 
-        # First check if we get the "auth_required"
-        msg = await self._receive_message()
-        if msg.get("type") != "auth_required":
-            raise HAWebSocketError(f"Unexpected response from Home Assistant: {msg}")
+    async def authenticate(self) -> None:
+        """Authenticate to Home Assistant WebSocket."""
+        frame = await self._receive_message()
+        if frame.type != WSType.AUTH_REQUIRED:
+            raise HAWebSocketAuthError(f"Unexpected response from Home Assistant: {frame}")
 
-        # Now send the auth message
-        await self._send_message({"type": "auth", "access_token": self.config.token})
+        await self._send_message(AuthFrame(
+            type=WSType.AUTH,
+            access_token=self.config.token,
+        ))
 
-        # Wait for auth_ok
-        msg = await self._receive_message()
-        if msg.get("type") != "auth_ok":
-            raise HAWebSocketError(f"Auth failed: {msg}")
+        frame = await self._receive_message()
+        if frame.type != WSType.AUTH_OK:
+            raise HAWebSocketAuthError(f"Auth failed: {frame}")
 
         _LOGGER.info("Authenticated to Home Assistant WebSocket")
+
+    async def _connect_and_listen(self) -> None:
+        """Connect to Home Assistant WebSocket and listen for events."""
+        await self.connect()
+        await self.authenticate()
 
         # Wait for subscription confirmation
         sub_id = await self._subscribe_events("state_changed")
@@ -123,13 +134,10 @@ class HAWebSocketClient:
 
     async def _handle_message(self, data: dict[str, Any]) -> None:
         """Handle incoming Websocket message."""
-        msg_type = data.get("type")
-
-        if msg_type == "event":
+        if data.type == WSType.EVENT:
             event = data.get("event", {})
             ev_type = event.get("event_type")
             ev_data = event.get("data", {})
-            # Example: print entity_id changes
             entity_id = ev_data.get("entity_id")
             if entity_id:
                 _LOGGER.info("%s: %s", ev_type, entity_id)
@@ -163,14 +171,24 @@ class HAWebSocketClient:
     async def _receive_message(self) -> dict[str, Any]:
         """Receive a message from the websocket."""
         msg = await self._ws.receive()
+        frame = parse_incoming(json.loads(msg.data))
 
-        match msg.type:
+        match frame.type:
             case aiohttp.WSMsgType.TEXT:
-                return json.loads(msg.data)
+                return json.loads(frame.data)
             case aiohttp.WSMsgType.ERROR:
-                raise HAWebSocketError(f"Websocket error: {self._ws.exception()}")
+                raise HAWebSocketConnectionError(f"Websocket error: {self._ws.exception()}")
             case _:
-                raise HAWebSocketError(f"Unexpected websocket message type: {msg.type}")
+                raise HAWebSocketError(f"Unexpected websocket message type: {frame.type}")
     
 class HAWebSocketError(Exception):
     """Home Assistant WebSocket error."""
+
+class HAWebSocketAuthError(HAWebSocketError):
+    """Home Assistant WebSocket authentication error."""
+
+class HAWebSocketConnectionError(HAWebSocketError):
+    """Home Assistant WebSocket connection error."""
+
+class HAWebSocketTimeout(HAWebSocketError):
+    """Home Assistant WebSocket timeout error."""
