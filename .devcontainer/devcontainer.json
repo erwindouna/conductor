@@ -20,6 +20,7 @@
         "esbenp.prettier-vscode",
         "mhutchie.git-graph",
         "ms-python.python",
+        "ms-python.debugpy",
         "oderwat.indent-rainbow",
         "redhat.vscode-yaml",
         "ryanluker.vscode-coverage-gutters"

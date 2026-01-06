@@ -1,13 +1,12 @@
 """Home Assistant WebSocket."""
 
-from dataclasses import dataclass
-from fastapi import WebSocket
 import asyncio
-import aiohttp
 import json
+import logging
+from dataclasses import dataclass
 from typing import Any
 
-import logging
+import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,16 +61,17 @@ class HAWebSocketClient:
         while not self._stop.is_set():
             try:
                 await self._connect_and_listen()
-                backoff = 1.0  
+                backoff = 1.0
+            except asyncio.TimeoutError:
+                _LOGGER.warning("Connection timed out, retrying with backoff in %.1f seconds...", backoff)
             except asyncio.CancelledError as err:
-                _LOGGER.exception("WebSocket client task was cancelled")
-                raise HAWebSocketError("WebSocket client task was cancelled") from err
-            except Exception as e:
-                _LOGGER.exception("WebSocket connection error: %s", e)
-                raise HAWebSocketError("WebSocket connection error") from e
+                _LOGGER.warning("HA ws client task was cancelled: %s", err)
+            except Exception as err:
+                _LOGGER.exception("WebSocket connection error: %s", err)
+                raise HAWebSocketError("WebSocket connection error") from err
     
             if self._stop.is_set():
-                _LOGGER.info("WebSocket client stopping, not reconnecting")
+                _LOGGER.info("Websocket client stopping, not reconnecting")
                 break
 
             _LOGGER.info("Reconnecting in %.1f seconds...", backoff)
@@ -88,6 +88,7 @@ class HAWebSocketClient:
             url=self.config.ws_url,
             heartbeat=30.0,  # Do ping/pong automatically
             autoping=True,
+            timeout=10.0,
         )
 
         # First check if we get the "auth_required"

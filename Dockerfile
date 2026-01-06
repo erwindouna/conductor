@@ -19,4 +19,15 @@ RUN groupadd --gid ${USER_GID} ${USERNAME} \
 
 WORKDIR /workspaces/conductor
 
+# Ensure common mount points exist and are writable by the non-root user
+ENV HOME=/home/${USERNAME}
+RUN mkdir -p /config "$HOME/.cache/uv" \
+ && chown -R ${USER_UID}:${USER_GID} /config "$HOME"
+
+# Make Git tolerant of bind-mounted workspace ownership
+RUN git config --system --add safe.directory /workspaces/*
+
+# Run as the non-root user by default
+USER ${USERNAME}
+
 CMD ["sleep", "infinity"]
