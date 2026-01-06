@@ -1,0 +1,90 @@
+---
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: 🐶 Ruff Linter
+        language: system
+        entry: bash -lc 'cd conductor && uv run ruff check --fix'
+        files: ^conductor/.*\.py$
+        stages: [pre-commit, pre-push, manual]
+
+      - id: ruff-format
+        name: 🐶 Ruff Formatter
+        language: system
+        entry: bash -lc 'cd conductor && uv run ruff format'
+        files: ^conductor/.*\.py$
+        stages: [pre-commit, pre-push, manual]
+
+      - id: mypy
+        name: 🆎 mypy
+        language: system
+        entry: bash -lc 'uv run mypy conductor'
+        files: ^conductor/
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+
+      - id: pylint
+        name: 🌟 pylint
+        language: system
+        entry: bash -lc 'uv run pylint conductor'
+        files: ^conductor/
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+
+      - id: pytest
+        name: 🧪 pytest
+        language: system
+        entry: bash -lc 'cd conductor && uv run pytest'
+        files: ^conductor/
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-ast
+        files: ^conductor/.*\.py$
+
+      - id: check-docstring-first
+        files: ^conductor/.*\.py$
+
+      - id: check-case-conflict
+        exclude: ^conductor/uv\.lock$
+
+      - id: check-merge-conflict
+        exclude: ^conductor/uv\.lock$
+
+      - id: check-json
+        exclude: ^(web/node_modules/|conductor/\.venv/)
+
+      - id: check-toml
+        exclude: ^conductor/uv\.lock$
+
+      - id: check-xml
+
+      - id: check-yaml
+        exclude: ^(web/node_modules/|conductor/\.venv/)
+
+      - id: detect-private-key
+        exclude: ^conductor/uv\.lock$
+
+      - id: end-of-file-fixer
+        exclude: ^(web/node_modules/|conductor/\.venv/|conductor/uv\.lock$)
+
+      - id: trailing-whitespace
+        exclude: ^(web/node_modules/|conductor/\.venv/|conductor/uv\.lock$)
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        args: [--ignore-words=.codespell-ignore]
+        exclude: ^(conductor/\.venv/|web/node_modules/|conductor/uv\.lock$)
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        exclude: ^(conductor/\.venv/|web/node_modules/|assets/.*)

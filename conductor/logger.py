@@ -4,6 +4,7 @@ import os
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+
 def setup_logging() -> None:
     """Set up logging configuration."""
     logging.config.dictConfig(
