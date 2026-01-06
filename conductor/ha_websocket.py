@@ -200,24 +200,26 @@ class HAWebSocketClient:
 
     async def _send_message(self, payload: Any) -> None:
         """Send a JSON message over the websocket."""
+        data = payload
         if hasattr(payload, "model_dump"):
-            # Exclude None values (e.g., avoid sending id=None in auth message)
+            # Exclude None values (for example: avoid sending id=None in auth message, or the event_type is None)
             data = payload.model_dump(exclude_none=True)
-        else:
-            data = payload
+
         await self._ws.send_str(json.dumps(data))
 
     async def _receive_message(self) -> Any:
         """Receive and parse a JSON WS message into a frame model."""
         ws_msg = await self._ws.receive()
-        if ws_msg.type == aiohttp.WSMsgType.TEXT:
-            payload = json.loads(ws_msg.data)
-            return parse_incoming(payload)
-        if ws_msg.type == aiohttp.WSMsgType.ERROR:
-            raise HAWebSocketConnectionError(f"Websocket error: {self._ws.exception()}")
-        if ws_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSING):
-            raise HAWebSocketError("Websocket closed")
-        raise HAWebSocketError(f"Unexpected websocket message type: {ws_msg.type}")
+        match ws_msg.type:
+            case aiohttp.WSMsgType.TEXT:
+                payload = json.loads(ws_msg.data)
+                return parse_incoming(payload)
+            case aiohttp.WSMsgType.ERROR:
+                raise HAWebSocketConnectionError(f"Websocket error: {self._ws.exception()}")
+            case aiohttp.WSMsgType.CLOSED | aiohttp.WSMsgType.CLOSING:
+                raise HAWebSocketError("Websocket closed")
+            case _:
+                raise HAWebSocketError(f"Unexpected websocket message type: {ws_msg.type}")
 
 
 class HAWebSocketError(Exception):
