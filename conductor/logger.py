@@ -4,8 +4,8 @@ import os
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
-
 def setup_logging() -> None:
+    """Set up logging configuration."""
     logging.config.dictConfig(
         {
             "version": 1,
@@ -26,7 +26,6 @@ def setup_logging() -> None:
                 "handlers": ["console"],
             },
             "loggers": {
-                # Keep uvicorn logs readable
                 "uvicorn": {"level": "INFO"},
                 "uvicorn.error": {"level": "INFO"},
                 "uvicorn.access": {"level": "WARNING"},
