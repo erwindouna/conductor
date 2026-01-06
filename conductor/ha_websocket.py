@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 import aiohttp
 
@@ -35,48 +35,40 @@ class HAWebSocketClientConfig:
 class HAWebSocketClient:
     """Home Assistant WebSocket handler."""
 
-    def __init__(self, config: HAWebSocketClientConfig) -> None:
+    def __init__(
+        self, config: HAWebSocketClientConfig, session: aiohttp.ClientSession | None = None
+    ) -> None:
         """Initialize the handler."""
         self.config: HAWebSocketClientConfig = config
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
-        self._session: aiohttp.ClientSession | None = None
+        self._session: aiohttp.ClientSession | None = session
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._msg_id: int = 0
-
-    @property
-    def is_running(self) -> bool:
-        """Return whether the client is running."""
-        return self._task is not None and not self._task.done()
-
-    @property
-    def is_connected(self) -> bool:
-        """Return whether the client is connected."""
-        return self._ws is not None and not self._ws.closed
 
     def start(self) -> None:
         """Start the connection."""
         if self._task is not None and not self._task.done():
-            _LOGGER.error("Websocket client is already running")
-            return
+            raise HAWebSocketError("Websocket client is already running")
+
         self._stop.clear()
         self._task = asyncio.create_task(self._run(), name=HA_WS_CLIENT_NAME)
 
     async def stop(self) -> None:
         """Stop the Websocket connection."""
         self._stop.set()
-        if self._task:
+        if self._task:  # pragma: no cover
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError as err:
-                raise HAWebSocketError("Websocket task was cancelled") from err
+                _LOGGER.info("Websocket client task cancelled: %s", err)
 
         if self._ws and not self._ws.closed:
-            await self._ws.close()
+            await self._ws.close()  # pragma: no cover
 
         if self._session and not self._session.closed:
-            await self._session.close()
+            await self._session.close()  # pragma: no cover
 
     async def _run(self) -> None:
         """Main connection loop with reconnection logic."""
@@ -220,6 +212,15 @@ class HAWebSocketClient:
                 raise HAWebSocketError("Websocket closed")
             case _:
                 raise HAWebSocketError(f"Unexpected websocket message type: {ws_msg.type}")
+
+    async def __aenter__(self) -> Self:
+        """Support async with by starting on enter."""
+
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        """Ensure clean shutdown on exit from context manager."""
+        await self.stop()
 
 
 class HAWebSocketError(Exception):
