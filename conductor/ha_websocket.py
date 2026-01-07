@@ -106,6 +106,7 @@ class HAWebSocketClient:
         _LOGGER.info(
             "Connecting to %s, timeout set to %s seconds", self.config.ws_url, HA_WS_TIMEOUT
         )
+
         self._ws = await self._session.ws_connect(
             url=self.config.ws_url,
             heartbeat=30.0,  # Do ping/pong automatically
