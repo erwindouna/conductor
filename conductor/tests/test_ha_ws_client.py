@@ -1,6 +1,7 @@
 """Test for the HA WebSocket client."""
 
 import asyncio
+import json
 import logging
 from unittest.mock import AsyncMock
 
@@ -13,7 +14,16 @@ from conductor.ha_websocket import (
     HAWebSocketClient,
     HAWebSocketError,
 )
-from conductor.models.ha_ws import AuthOk, WSType
+from conductor.models.ha_ws import (
+    AuthFrame,
+    AuthInvalid,
+    AuthOk,
+    AuthRequired,
+    WSType,
+    parse_incoming,
+)
+
+from . import load_fixtures
 
 
 async def test_init_client(client_init: HAWebSocketClient) -> None:
@@ -29,8 +39,6 @@ async def test_init_client(client_init: HAWebSocketClient) -> None:
 
 async def test_init_client_already_running(client_init: HAWebSocketClient) -> None:
     """Test initializing the HA Websocket client."""
-
-    # Simulate already running client
     started = asyncio.Event()
     gatekeeper = asyncio.Event()
 
@@ -40,8 +48,6 @@ async def test_init_client_already_running(client_init: HAWebSocketClient) -> No
         await gatekeeper.wait()  # Just need to wait, so we can test
 
     client_init._run = dummy_task
-
-    # Try a new start while the dummy task is running
     client_init.start()
     await asyncio.wait_for(started.wait(), timeout=1)
 
@@ -63,20 +69,6 @@ async def test_client_connection(client_init: HAWebSocketClient) -> None:
         await client_init.stop()
 
 
-async def test_client_authentication(
-    client_init: HAWebSocketClient, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test authenticating the HA Websocket client."""
-    try:
-        caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
-        await client_init.connect()
-        await client_init.authenticate()
-
-        assert "Successfully authenticated to Home Assistant Websocket" in caplog.text
-    finally:
-        await client_init.stop()
-
-
 async def test_client_authentication_unexpected_first_frame(client_init: HAWebSocketClient) -> None:
     """Test if the first frame isn't auth_required. Don't know why, but let's be thorough."""
     client_init._receive_message = AsyncMock(return_value=AuthOk(type=WSType.AUTH_OK))
@@ -86,3 +78,108 @@ async def test_client_authentication_unexpected_first_frame(client_init: HAWebSo
         await client_init.authenticate()
 
     client_init._send_message.assert_not_called()
+
+
+async def test_client_authentication_success_branch(
+    client_init: HAWebSocketClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A valid authentication.."""
+    caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
+    client_init._receive_message = AsyncMock(
+        side_effect=[
+            AuthRequired(type=WSType.AUTH_REQUIRED, ha_version="2026.1.0"),
+            AuthOk(type=WSType.AUTH_OK, ha_version="2026.1.0"),
+        ]
+    )
+    client_init._send_message = AsyncMock()
+
+    await client_init.authenticate()
+
+    client_init._send_message.assert_called_once()
+    assert client_init._receive_message.await_count == 2
+    assert "Successfully authenticated to Home Assistant Websocket" in caplog.text
+
+
+async def test_client_authentication_invalid_token(client_init: HAWebSocketClient) -> None:
+    """Test invalid token."""
+    client_init.config.token = "invalid_token"
+    client_init._receive_message = AsyncMock(
+        side_effect=[
+            AuthRequired(type=WSType.AUTH_REQUIRED, ha_version="2026.1.0"),
+            AuthInvalid(type=WSType.AUTH_INVALID, message="Invalid password"),
+        ]
+    )
+    client_init._send_message = AsyncMock()
+
+    with pytest.raises(HAWebSocketAuthError, match="Invalid password"):
+        await client_init.authenticate()
+
+    client_init._send_message.assert_called_once()
+    sent_payload = client_init._send_message.call_args.args[0]
+    assert isinstance(sent_payload, AuthFrame)
+    assert sent_payload.type == WSType.AUTH
+    assert sent_payload.access_token == "invalid_token"
+    assert client_init._receive_message.await_count == 2
+
+
+async def test_client_connect_and_listen(client: HAWebSocketClient) -> None:
+    """Test connecting and listening with the HA Websocket client using mocks."""
+    # Attach an empty websocket iterator so the loop exits immediately
+    client.set_ws_messages([])
+
+    await client._connect_and_listen()
+
+    client.connect.assert_awaited_once()
+    client.authenticate.assert_awaited_once()
+    client._subscribe_events.assert_awaited_once()
+
+
+async def test_client_connect_and_listen_error(client: HAWebSocketClient) -> None:
+    """Test exception handling in the _run method of the HA Websocket client."""
+
+    class Msg:
+        def __init__(self, t):
+            self.type = t
+
+    client.set_ws_messages([Msg(aiohttp.WSMsgType.ERROR)])
+    # ensure _ws.exception() returns something visible
+    client._ws.exception = lambda: Exception("Test exception")
+
+    with pytest.raises(HAWebSocketError, match="Websocket error"):
+        await client._connect_and_listen()
+
+
+async def test_client_connect_and_listen_closed_client(client: HAWebSocketClient) -> None:
+    """Test handling of closed websocket in the _run method of the HA Websocket client."""
+
+    class Msg:
+        def __init__(self, t):
+            self.type = t
+
+    client.set_ws_messages([Msg(aiohttp.WSMsgType.CLOSED)])
+
+    with pytest.raises(HAWebSocketError, match="Websocket closed"):
+        await client._connect_and_listen()
+
+
+async def test_client_subscribe_events(client_init: HAWebSocketClient) -> None:
+    """Ensure subscribing sends a message and returns the msg id."""
+    client_init._send_message = AsyncMock()
+    client_init._receive_message = AsyncMock(
+        return_value=parse_incoming(json.loads(load_fixtures("result_frame.json")))
+    )
+
+    sub_id = await client_init._subscribe_events()
+    client_init._send_message.assert_awaited_once()
+    assert sub_id == 1
+
+
+async def test_client_handle_message(
+    client: HAWebSocketClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test handling of incoming messages and log warnings."""
+    caplog.set_level(logging.WARNING, logger="conductor.ha_websocket")
+
+    success_payload = json.loads(load_fixtures("ha_event.json"))
+    result_ok = parse_incoming(success_payload)
+    await client._handle_message(result_ok)

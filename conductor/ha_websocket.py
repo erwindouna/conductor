@@ -10,7 +10,6 @@ import aiohttp
 
 from conductor.models.ha_ws import (
     AuthFrame,
-    EventFrame,
     ResultFrame,
     SubscribeEventsFrame,
     WSBase,
@@ -128,7 +127,6 @@ class HAWebSocketClient:
         match result.type:
             case WSType.AUTH_OK:
                 _LOGGER.info("Successfully authenticated to Home Assistant Websocket")
-                return
             case WSType.AUTH_INVALID:
                 raise HAWebSocketAuthError(f"Auth failed: {result}")
 
@@ -162,14 +160,8 @@ class HAWebSocketClient:
             return
 
         if frame.type == WSType.EVENT:
-            ev: EventFrame = frame
-            entity_id = ev.event.data.get("entity_id")
-            if entity_id:
-                # Only include event_type if present; omit when None
-                if ev.event.event_type:
-                    _LOGGER.info("%s: %s", ev.event.event_type, entity_id)
-                else:
-                    _LOGGER.info("%s", entity_id)
+            _LOGGER.info("Received event: %s", frame.model_dump())
+            # Now here more logcan be added to process events as needed
             return
 
     async def _subscribe_events(self, event_type: str | None = None) -> int:
@@ -183,12 +175,8 @@ class HAWebSocketClient:
                 event_type=event_type,
             )
         )
-        response = await self._receive_message()
+        await self._receive_message()
 
-        if response.type != WSType.RESULT:
-            raise HAWebSocketError(f"Unexpected subscribe response: {response}")
-        if response.id != self._msg_id or not response.success:
-            raise HAWebSocketError(f"Subscribe failed: {response.model_dump()}")
         return self._msg_id
 
     async def _send_message(self, payload: Any) -> None:
@@ -198,7 +186,7 @@ class HAWebSocketClient:
             # Exclude None values (for example: avoid sending id=None in auth message, or the event_type is None)
             data = payload.model_dump(exclude_none=True)
 
-        await self._ws.send_str(json.dumps(data))
+        await self._ws.send_json(json.dumps(data))
 
     async def _receive_message(self) -> Any:
         """Receive and parse a JSON WS message into a frame model."""
