@@ -175,7 +175,8 @@ async def test_client_subscribe_events(client_init: HAWebSocketClient) -> None:
 
 
 async def test_client_handle_message(
-    client: HAWebSocketClient, caplog: pytest.LogCaptureFixture
+    client: HAWebSocketClient,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test handling of incoming messages and log warnings."""
     caplog.set_level(logging.WARNING, logger="conductor.ha_websocket")
@@ -183,3 +184,121 @@ async def test_client_handle_message(
     success_payload = json.loads(load_fixtures("ha_event.json"))
     result_ok = parse_incoming(success_payload)
     await client._handle_message(result_ok)
+
+
+async def test_run_handles_timeout_backoff(
+    client: HAWebSocketClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_run should log timeout and schedule reconnect with backoff."""
+    caplog.set_level(logging.WARNING, logger="conductor.ha_websocket")
+    caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
+
+    client._connect_and_listen = AsyncMock(side_effect=asyncio.TimeoutError())
+
+    async def sleep_side_effect(_):
+        client._stop.set()
+
+    sleep_mock = AsyncMock(side_effect=sleep_side_effect)
+    monkeypatch.setattr("conductor.ha_websocket.asyncio.sleep", sleep_mock)
+
+    await client._run()
+
+    assert any("Connection timed out" in rec.message for rec in caplog.records)
+    assert any("Reconnecting in" in rec.message for rec in caplog.records)
+    sleep_mock.assert_awaited_once()
+
+
+async def test_run_handles_cancelled(
+    client: HAWebSocketClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_run should warn on cancellation and attempt reconnect."""
+    caplog.set_level(logging.WARNING, logger="conductor.ha_websocket")
+    caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
+
+    client._connect_and_listen = AsyncMock(side_effect=asyncio.CancelledError("boom"))
+
+    async def sleep_side_effect(_):
+        client._stop.set()
+
+    sleep_mock = AsyncMock(side_effect=sleep_side_effect)
+    monkeypatch.setattr("conductor.ha_websocket.asyncio.sleep", sleep_mock)
+
+    await client._run()
+
+    assert any("task was cancelled" in rec.message for rec in caplog.records)
+    assert any("Reconnecting in" in rec.message for rec in caplog.records)
+    sleep_mock.assert_awaited_once()
+
+
+async def test_run_handles_ws_error(
+    client: HAWebSocketClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_run should log HAWebSocketError and attempt reconnect."""
+    caplog.set_level(logging.ERROR, logger="conductor.ha_websocket")
+    caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
+
+    client._connect_and_listen = AsyncMock(side_effect=HAWebSocketError("boom"))
+
+    async def sleep_side_effect(_):
+        client._stop.set()
+
+    sleep_mock = AsyncMock(side_effect=sleep_side_effect)
+    monkeypatch.setattr("conductor.ha_websocket.asyncio.sleep", sleep_mock)
+
+    await client._run()
+
+    assert any("Websocket error:" in rec.message for rec in caplog.records)
+    assert any("Reconnecting in" in rec.message for rec in caplog.records)
+    sleep_mock.assert_awaited_once()
+
+
+async def test_run_handles_unexpected_exception(
+    client: HAWebSocketClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_run should log unexpected exceptions and attempt reconnect."""
+    caplog.set_level(logging.ERROR, logger="conductor.ha_websocket")
+    caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
+
+    client._connect_and_listen = AsyncMock(side_effect=Exception("boom"))
+
+    async def sleep_side_effect(_):
+        client._stop.set()
+
+    sleep_mock = AsyncMock(side_effect=sleep_side_effect)
+    monkeypatch.setattr("conductor.ha_websocket.asyncio.sleep", sleep_mock)
+
+    await client._run()
+
+    assert any("Unexpected websocket failure:" in rec.message for rec in caplog.records)
+    assert any("Reconnecting in" in rec.message for rec in caplog.records)
+    sleep_mock.assert_awaited_once()
+
+
+async def test_run_success_reconnects_then_stops(
+    client: HAWebSocketClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """On success, _run resets backoff and schedules reconnect; then we stop. Tada!"""
+    caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
+
+    client._connect_and_listen = AsyncMock(return_value=None)
+
+    async def sleep_side_effect(_):
+        client._stop.set()
+
+    sleep_mock = AsyncMock(side_effect=sleep_side_effect)
+    monkeypatch.setattr("conductor.ha_websocket.asyncio.sleep", sleep_mock)
+
+    await client._run()
+
+    assert any("Reconnecting in" in rec.message for rec in caplog.records)
+    sleep_mock.assert_awaited_once()
