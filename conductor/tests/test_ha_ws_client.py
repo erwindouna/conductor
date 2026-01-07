@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import aiohttp
 import pytest
@@ -163,14 +163,21 @@ async def test_client_connect_and_listen_closed_client(client: HAWebSocketClient
 
 
 async def test_client_subscribe_events(client_init: HAWebSocketClient) -> None:
-    """Ensure subscribing sends a message and returns the msg id."""
-    client_init._send_message = AsyncMock()
-    client_init._receive_message = AsyncMock(
-        return_value=parse_incoming(json.loads(load_fixtures("result_frame.json")))
-    )
+    client_init._msg_id = 0
 
-    sub_id = await client_init._subscribe_events()
-    client_init._send_message.assert_awaited_once()
+    with (
+        patch.object(client_init, "_send_message", new=AsyncMock()) as send_mock,
+        patch.object(
+            client_init,
+            "_receive_message",
+            new=AsyncMock(
+                return_value=parse_incoming(json.loads(load_fixtures("result_frame.json")))
+            ),
+        ),
+    ):
+        sub_id = await client_init._subscribe_events()
+
+    send_mock.assert_awaited_once()
     assert sub_id == 1
 
 
@@ -185,6 +192,11 @@ async def test_client_handle_message(
     result_ok = parse_incoming(success_payload)
     await client._handle_message(result_ok)
 
+    # Test failure handling, right away :)
+    failure_payload = json.loads(load_fixtures("result_frame_failure.json"))
+    result_fail = parse_incoming(failure_payload)
+    await client._handle_message(result_fail)
+
 
 async def test_run_handles_timeout_backoff(
     client: HAWebSocketClient,
@@ -195,15 +207,18 @@ async def test_run_handles_timeout_backoff(
     caplog.set_level(logging.WARNING, logger="conductor.ha_websocket")
     caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
 
-    client._connect_and_listen = AsyncMock(side_effect=asyncio.TimeoutError())
-
     async def sleep_side_effect(_):
-        client._stop.set()
+        client._stop.set()  # Stop after first backoff
 
     sleep_mock = AsyncMock(side_effect=sleep_side_effect)
     monkeypatch.setattr("conductor.ha_websocket.asyncio.sleep", sleep_mock)
 
-    await client._run()
+    with patch.object(
+        client,
+        "_connect_and_listen",
+        new=AsyncMock(side_effect=asyncio.TimeoutError()),
+    ):
+        await client._run()
 
     assert any("Connection timed out" in rec.message for rec in caplog.records)
     assert any("Reconnecting in" in rec.message for rec in caplog.records)
@@ -302,3 +317,51 @@ async def test_run_success_reconnects_then_stops(
 
     assert any("Reconnecting in" in rec.message for rec in caplog.records)
     sleep_mock.assert_awaited_once()
+
+
+async def test_client_receive_message(client_init: HAWebSocketClient) -> None:
+    """Test receiving and parsing a message from the websocket."""
+    sample_payload = json.loads(load_fixtures("ha_event.json"))
+    raw_message = aiohttp.WSMessage(
+        type=aiohttp.WSMsgType.TEXT,
+        data=json.dumps(sample_payload),
+        extra=None,
+    )
+
+    client_init._ws = AsyncMock()
+    client_init._ws.receive = AsyncMock(return_value=raw_message)
+
+    message = await client_init._receive_message()
+
+    assert message.type == WSType.EVENT
+    assert hasattr(message, "event")
+
+
+async def test_client_receive_message_error(client_init: HAWebSocketClient) -> None:
+    """Test receiving a non-text message raises an error."""
+    raw_message = aiohttp.WSMessage(
+        type=aiohttp.WSMsgType.ERROR,
+        data=None,
+        extra=None,
+    )
+
+    client_init._ws = AsyncMock()
+    client_init._ws.receive = AsyncMock(return_value=raw_message)
+
+    with pytest.raises(HAWebSocketError, match="Websocket error"):
+        await client_init._receive_message()
+
+
+async def test_client_receive_message_closed(client_init: HAWebSocketClient) -> None:
+    """Test receiving a closed message raises an error."""
+    raw_message = aiohttp.WSMessage(
+        type=aiohttp.WSMsgType.CLOSED,
+        data=None,
+        extra=None,
+    )
+
+    client_init._ws = AsyncMock()
+    client_init._ws.receive = AsyncMock(return_value=raw_message)
+
+    with pytest.raises(HAWebSocketError, match="Websocket closed"):
+        await client_init._receive_message()

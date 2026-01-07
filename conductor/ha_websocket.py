@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Self
+from typing import Any, Self, cast
 
 import aiohttp
 
@@ -140,21 +140,22 @@ class HAWebSocketClient:
         _LOGGER.info("Subscribed to %s (id=%d)", "state_changed", sub_id)
 
         # Listen for incoming messages
-        async for ws_msg in self._ws:
+        ws = self._require_ws()
+        async for ws_msg in ws:
             match ws_msg.type:
                 case aiohttp.WSMsgType.TEXT:
                     await self._handle_message(
-                        frame=parse_incoming(payload=json.loads(ws_msg.data))
+                        frame=cast(WSBase, parse_incoming(payload=json.loads(ws_msg.data)))
                     )
                 case aiohttp.WSMsgType.ERROR:
-                    raise HAWebSocketError(f"Websocket error: {self._ws.exception()}")
+                    raise HAWebSocketError(f"Websocket error: {ws.exception()}")
                 case aiohttp.WSMsgType.CLOSED | aiohttp.WSMsgType.CLOSING:
                     raise HAWebSocketError("Websocket closed")
 
     async def _handle_message(self, frame: WSBase) -> None:
         """Handle incoming Websocket message parsed into a frame model."""
         if frame.type == WSType.RESULT:
-            res: ResultFrame = frame
+            res = cast(ResultFrame, frame)
             if res.success is False:
                 _LOGGER.warning("Command failed: %s", res.model_dump())
             return
@@ -181,26 +182,34 @@ class HAWebSocketClient:
 
     async def _send_message(self, payload: Any) -> None:
         """Send a JSON message over the websocket."""
+        ws = self._require_ws()
         data = payload
         if hasattr(payload, "model_dump"):
             # Exclude None values (for example: avoid sending id=None in auth message, or the event_type is None)
             data = payload.model_dump(exclude_none=True)
 
-        await self._ws.send_json(json.dumps(data))
+        await ws.send_json(data)
 
     async def _receive_message(self) -> Any:
         """Receive and parse a JSON WS message into a frame model."""
-        ws_msg = await self._ws.receive()
+        ws = self._require_ws()
+        ws_msg = await ws.receive()
         match ws_msg.type:
             case aiohttp.WSMsgType.TEXT:
                 payload = json.loads(ws_msg.data)
                 return parse_incoming(payload)
             case aiohttp.WSMsgType.ERROR:
-                raise HAWebSocketConnectionError(f"Websocket error: {self._ws.exception()}")
+                raise HAWebSocketConnectionError(f"Websocket error: {ws.exception()}")
             case aiohttp.WSMsgType.CLOSED | aiohttp.WSMsgType.CLOSING:
                 raise HAWebSocketError("Websocket closed")
             case _:
                 raise HAWebSocketError(f"Unexpected websocket message type: {ws_msg.type}")
+
+    def _require_ws(self) -> aiohttp.ClientWebSocketResponse:
+        """Return an active websocket or raise a standardized connection error."""
+        if self._ws is None or self._ws.closed:
+            raise HAWebSocketConnectionError("Websocket not connected")
+        return self._ws
 
     async def __aenter__(self) -> Self:
         """Support async with by starting on enter."""

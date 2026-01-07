@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,18 +20,7 @@ class WSType(StrEnum):
     SUBSCRIBE_EVENTS = "subscribe_events"
 
 
-TModel = TypeVar("TModel", bound=type[BaseModel])
-FRAME_REGISTRY: dict[WSType, type[BaseModel]] = {}
-
-
-def register_frame(frame_type: WSType) -> TModel:
-    """Decorator to register a WebSocket frame model by its `type`."""
-
-    def decorator(model: type[BaseModel]) -> type[BaseModel]:
-        FRAME_REGISTRY[frame_type] = model
-        return model
-
-    return decorator
+# Defer registration types until after WSBase is defined
 
 
 class IncomingFrame(BaseModel):
@@ -47,6 +36,21 @@ class WSBase(IncomingFrame):
     """Base model for concrete Home Assistant WebSocket frames."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+# Registration machinery now that WSBase is defined
+TModel = TypeVar("TModel", bound=type[WSBase])
+FRAME_REGISTRY: dict[WSType, type[WSBase]] = {}
+
+
+def register_frame(frame_type: WSType) -> Callable[[TModel], TModel]:
+    """Decorator to register a WebSocket frame model by its `type`."""
+
+    def decorator(model: TModel) -> TModel:
+        FRAME_REGISTRY[frame_type] = model
+        return model
+
+    return decorator
 
 
 @register_frame(WSType.AUTH)
@@ -144,4 +148,4 @@ def parse_incoming(payload: dict[str, Any]) -> WSBase:
     model = FRAME_REGISTRY.get(base.type)
     if model is None:
         raise ValueError(f"Unsupported WS frame type: {base.type!r}")
-    return model.model_validate(payload)
+    return cast(WSBase, model.model_validate(payload))
