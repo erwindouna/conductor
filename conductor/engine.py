@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-_LOGGRER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 
 class ConductorEngine:
@@ -16,33 +16,34 @@ class ConductorEngine:
 
     def start(self) -> None:
         """Start the engine."""
-        _LOGGRER.info("Starting Conductor engine")
+        _LOGGER.info("Starting Conductor engine")
         if self._task is not None and not self._task.done():
             raise ConductorEngineRuntimeError("Engine is already running")
 
         self._stop.clear()
         self._task = asyncio.create_task(self._run(), name="conductor-engine")
-        _LOGGRER.info("Conductor engine started")
+        _LOGGER.info("Conductor engine started")
 
     async def stop(self) -> None:
         """Stop the engine."""
-        _LOGGRER.info("Stopping Conductor engine")
+        _LOGGER.info("Stopping Conductor engine")
         self._stop.set()
         if self._task:  # pragma: no cover
             self._task.cancel()
-        _LOGGRER.info("Conductor engine stopped")
+        _LOGGER.info("Conductor engine stopped")
 
     async def _run(self) -> None:
         """Engine main loop."""
 
         while not self._stop.is_set():
             try:
+                _LOGGER.info("Sleeping for 1 second in engine loop")
                 await asyncio.sleep(1)
             except asyncio.CancelledError:
-                _LOGGRER.info("Conductor engine task was cancelled")
+                _LOGGER.info("Conductor engine task was cancelled")
 
             if self._stop.is_set():
-                _LOGGRER.info("Conductor engine stopping as requested")
+                _LOGGER.info("Conductor engine stopping as requested")
                 break
 
 
