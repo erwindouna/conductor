@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import typing
+from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
@@ -24,6 +26,10 @@ from conductor.models.ha_ws import (
 )
 
 from . import load_fixtures
+
+
+class _SupportsSetWSMessages(Protocol):
+    def set_ws_messages(self, messages: list[Any]) -> None: ...
 
 
 async def test_init_client(client_init: HAWebSocketClient) -> None:
@@ -94,7 +100,7 @@ async def test_client_authentication_success_branch(
     caplog.set_level(logging.INFO, logger="conductor.ha_websocket")
 
     with (
-        patch.object(client_init, "_send_message", new=AsyncMock()),
+        patch.object(client_init, "_send_message", new=AsyncMock()) as send_mock,
         patch.object(
             client_init,
             "_receive_message",
@@ -104,12 +110,12 @@ async def test_client_authentication_success_branch(
                     AuthOk(type=WSType.AUTH_OK, ha_version="2026.1.0"),
                 ]
             ),
-        ),
+        ) as recv_mock,
     ):
         await client_init.authenticate()
 
-        client_init._send_message.assert_called_once()
-        assert client_init._receive_message.await_count == 2
+        send_mock.assert_awaited_once()
+        assert recv_mock.await_count == 2
         assert "Successfully authenticated to Home Assistant Websocket" in caplog.text
 
 
@@ -118,11 +124,7 @@ async def test_client_authentication_invalid_token(client_init: HAWebSocketClien
     client_init.config.token = "invalid_token"
 
     with (
-        patch.object(
-            client_init,
-            "_send_message",
-            new=AsyncMock(),
-        ),
+        patch.object(client_init, "_send_message", new=AsyncMock()) as send_mock,
         patch.object(
             client_init,
             "_receive_message",
@@ -132,23 +134,23 @@ async def test_client_authentication_invalid_token(client_init: HAWebSocketClien
                     AuthInvalid(type=WSType.AUTH_INVALID, message="Invalid password"),
                 ]
             ),
-        ),
+        ) as recv_mock,
     ):
         with pytest.raises(HAWebSocketAuthError, match="Invalid password"):
             await client_init.authenticate()
 
-        client_init._send_message.assert_called_once()
-        sent_payload = client_init._send_message.call_args.args[0]
+        send_mock.assert_awaited_once()
+        sent_payload = send_mock.call_args.args[0]
         assert isinstance(sent_payload, AuthFrame)
         assert sent_payload.type == WSType.AUTH
         assert sent_payload.access_token == "invalid_token"
-        assert client_init._receive_message.await_count == 2
+        assert recv_mock.await_count == 2
 
 
 async def test_client_connect_and_listen(client: HAWebSocketClient) -> None:
     """Test connecting and listening with the HA Websocket client using mocks."""
     # Attach an empty websocket iterator so the loop exits immediately
-    client.set_ws_messages([])
+    cast(_SupportsSetWSMessages, client).set_ws_messages([])
 
     await client._connect_and_listen()
 
@@ -160,7 +162,7 @@ async def test_client_connect_and_listen_error(client: HAWebSocketClient) -> Non
         def __init__(self, type):
             self.type = type
 
-    client.set_ws_messages([Msg(aiohttp.WSMsgType.ERROR)])
+    cast(_SupportsSetWSMessages, client).set_ws_messages([Msg(aiohttp.WSMsgType.ERROR)])
     # ensure _ws.exception() returns something visible
     assert client._ws is not None
     with patch.object(client._ws, "exception", return_value=Exception("Test exception")):
@@ -175,7 +177,7 @@ async def test_client_connect_and_listen_closed_client(client: HAWebSocketClient
         def __init__(self, t):
             self.type = t
 
-    client.set_ws_messages([Msg(aiohttp.WSMsgType.CLOSED)])
+    cast(_SupportsSetWSMessages, client).set_ws_messages([Msg(aiohttp.WSMsgType.CLOSED)])
 
     with pytest.raises(HAWebSocketError, match="Websocket closed"):
         await client._connect_and_listen()
@@ -375,8 +377,7 @@ async def test_client_receive_message(client_init: HAWebSocketClient) -> None:
         def exception(self):
             return Exception("unused")
 
-    client_init._ws = _WS()  # type: ignore[assignment]
-
+    client_init._ws = typing.cast(aiohttp.ClientWebSocketResponse, _WS())
     message = await client_init._receive_message()
 
     assert message.type == WSType.EVENT
@@ -403,8 +404,7 @@ async def test_client_receive_message_error(client_init: HAWebSocketClient) -> N
         def exception(self):
             return Exception("Test exception")
 
-    client_init._ws = _WS()  # type: ignore[assignment]
-
+    client_init._ws = typing.cast(aiohttp.ClientWebSocketResponse, _WS())
     with pytest.raises(HAWebSocketError, match="Websocket error"):
         await client_init._receive_message()
 
@@ -429,7 +429,6 @@ async def test_client_receive_message_closed(client_init: HAWebSocketClient) -> 
         def exception(self):
             return Exception("unused")
 
-    client_init._ws = _WS()  # type: ignore[assignment]
-
+    client_init._ws = typing.cast(aiohttp.ClientWebSocketResponse, _WS())
     with pytest.raises(HAWebSocketError, match="Websocket closed"):
         await client_init._receive_message()

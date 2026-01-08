@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import ClientSession, WSMsgType, web
+from aiohttp.test_utils import TestServer
 
 from conductor.ha_websocket import HAWebSocketClient, HAWebSocketClientConfig
 
@@ -49,7 +50,7 @@ async def ha_ws_handler(request: web.Request) -> web.WebSocketResponse:
 
 
 @pytest.fixture(name="ha_ws_server")
-async def ha_ws_server(aiohttp_server) -> web.Server:
+async def ha_ws_server(aiohttp_server) -> TestServer:
     """Return a mock Home Assistant WebSocket server."""
     app = web.Application()
     app["received"] = []
@@ -58,7 +59,7 @@ async def ha_ws_server(aiohttp_server) -> web.Server:
 
 
 @pytest.fixture(name="client_init")
-async def ha_ws_client_init(ha_ws_server: web.Server) -> AsyncGenerator[HAWebSocketClient, None]:
+async def ha_ws_client_init(ha_ws_server: TestServer) -> AsyncGenerator[HAWebSocketClient, None]:
     """Return a configured HAWebSocketClient, not connected/authenticated."""
     async with (
         ClientSession() as session,
@@ -117,7 +118,7 @@ async def mock_ha_ws_client() -> AsyncGenerator[HAWebSocketClient, None]:
 
         def set_ws_messages(messages: list[Any]) -> None:
             """Set the messages which can be yielded. Hooray, this works!"""
-            client._ws = _WSStub(messages)
+            client._ws = _WSStub(messages)  # type: ignore[assignment]
 
         def set_ws_error(exc: Exception) -> None:
             """Set an exception to be raised by the stub websocket."""
@@ -129,7 +130,7 @@ async def mock_ha_ws_client() -> AsyncGenerator[HAWebSocketClient, None]:
                 return exc
 
             setattr(ws, "exception", _exc)
-            client._ws = ws
+            client._ws = ws  # type: ignore[assignment]
 
         setattr(client, "set_ws_messages", set_ws_messages)
         setattr(client, "set_ws_error", set_ws_error)
