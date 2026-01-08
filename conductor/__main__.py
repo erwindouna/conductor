@@ -2,6 +2,7 @@
 
 import logging
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
@@ -15,7 +16,7 @@ test_url = "ws://192.168.2.53:8123/api/websocket"  # pylint: disable=invalid-nam
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for Conductor."""
     setup_logging()
     logger = logging.getLogger("conductor")
@@ -40,6 +41,6 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok"}
