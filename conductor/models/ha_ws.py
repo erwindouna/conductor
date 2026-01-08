@@ -145,6 +145,6 @@ def parse_incoming(payload: dict[str, Any]) -> WSBase:
     """Parse an incoming WS message dict into a concrete frame model."""
     base = IncomingFrame.model_validate(payload)
     model = FRAME_REGISTRY.get(base.type)
-    if model is None:
-        raise ValueError(f"Unsupported WS frame type: {base.type!r}")
+    assert model is not None, f"No model registered for frame type {base.type}"
+
     return cast(WSBase, model.model_validate(payload))
