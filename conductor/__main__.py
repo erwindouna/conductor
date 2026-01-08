@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from conductor.logger import setup_logging
 
+from .engine import ConductorEngine
 from .ha_websocket import HAWebSocketClient, HAWebSocketClientConfig
 
 # Yeah, I know... just for testing purposes.
@@ -22,6 +23,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     logger = logging.getLogger("conductor")
     logger.info("Starting Conductor application")
 
+    # Start the Home Assistant Websocket client
     ha_ws_config = HAWebSocketClientConfig(
         ws_url=test_url,
         token=test_token,
@@ -29,11 +31,16 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     ha_ws_client = HAWebSocketClient(config=ha_ws_config)
     ha_ws_client.start()
 
+    # Start the Conductor engine
+    conductor_engine = ConductorEngine()
+    conductor_engine.start()
+
     try:
         yield
     finally:
         logger.info("Stopping Home Assistant Websocket client")
         await ha_ws_client.stop()
+        await conductor_engine.stop()
     logger.info("Shutting down Conductor application")
 
 
