@@ -7,7 +7,7 @@
   "overrideCommand": false,
   "shutdownAction": "stopCompose",
 
-  "postCreateCommand": "cd /workspaces/conductor/conductor && uv sync",
+  "postCreateCommand": "mkdir -p ~/.local/share/uv/tools && uv tool install prek --link-mode=copy && prek --version && cd /workspaces/conductor/conductor && uv sync",
   "postStartCommand": "cd /workspaces/conductor/conductor && uv --version && python --version",
 
   "customizations": {
@@ -60,7 +60,6 @@
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers-extra/features/uv:1": {},
-    "ghcr.io/devcontainers-extra/features/pre-commit:2": {},
     "ghcr.io/devcontainers-extra/features/zsh-plugins:0": {
       "plugins": "git zsh-autosuggestions zsh-syntax-highlighting zsh-completions",
       "omzPlugins": "https://github.com/zsh-users/zsh-autosuggestions.git https://github.com/zsh-users/zsh-syntax-highlighting.git https://github.com/zsh-users/zsh-completions.git"
