@@ -51,6 +51,12 @@ dev = [
   "ruff>=0.4",
 ]
 
+[tool.pylint]
+max-line-length = 180
+disable = [
+  "R0903",  # too-few-public-methods
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"

@@ -1,3 +1,5 @@
+"""Logging setup for the Conductor application."""
+
 import logging
 import logging.config
 import os

@@ -68,6 +68,7 @@ class HAWebSocketClient:
 
         if self._session and not self._session.closed:
             await self._session.close()  # pragma: no cover
+        _LOGGER.info("HA websocket client stopped")
 
     async def _run(self) -> None:
         """Main connection loop with reconnection logic."""
@@ -185,7 +186,8 @@ class HAWebSocketClient:
         ws = self._require_ws()
         data = payload
         if hasattr(payload, "model_dump"):
-            # Exclude None values (for example: avoid sending id=None in auth message, or the event_type is None)
+            # Exclude None values (for example: avoid sending id=None in auth message,
+            # or the event_type is None)
             data = payload.model_dump(exclude_none=True)
 
         await ws.send_json(data)

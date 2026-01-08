@@ -1,9 +1,11 @@
 """Test for the HA WebSocket client."""
+# pylint: disable=protected-access, too-few-public-methods, redefined-builtin
 
 import asyncio
 import json
 import logging
 import typing
+from abc import abstractmethod
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, patch
 
@@ -29,7 +31,11 @@ from . import load_fixtures
 
 
 class _SupportsSetWSMessages(Protocol):
-    def set_ws_messages(self, messages: list[Any]) -> None: ...
+    """Protocol to allow setting websocket messages for testing."""
+
+    @abstractmethod
+    def set_ws_messages(self, messages: list[Any]) -> None:
+        """Preset websocket messages to be yielded by the client stub."""
 
 
 async def test_init_client(client_init: HAWebSocketClient) -> None:
@@ -159,7 +165,9 @@ async def test_client_connect_and_listen_error(client: HAWebSocketClient) -> Non
     """Test exception handling in the _run method of the HA Websocket client."""
 
     class Msg:
-        def __init__(self, type):
+        """Mock message class."""
+
+        def __init__(self, type) -> None:
             self.type = type
 
     cast(_SupportsSetWSMessages, client).set_ws_messages([Msg(aiohttp.WSMsgType.ERROR)])
@@ -173,8 +181,10 @@ async def test_client_connect_and_listen_closed_client(client: HAWebSocketClient
     """Test handling of closed websocket in the _run method of the HA Websocket client."""
 
     class Msg:
-        def __init__(self, t):
-            self.type = t
+        """ "Mock message class."""
+
+        def __init__(self, type) -> None:
+            self.type = type
 
     cast(_SupportsSetWSMessages, client).set_ws_messages([Msg(aiohttp.WSMsgType.CLOSED)])
 
@@ -183,6 +193,7 @@ async def test_client_connect_and_listen_closed_client(client: HAWebSocketClient
 
 
 async def test_client_subscribe_events(client_init: HAWebSocketClient) -> None:
+    """Test subscribing to events."""
     client_init._msg_id = 0
 
     with (
@@ -367,13 +378,16 @@ async def test_client_receive_message(client_init: HAWebSocketClient) -> None:
     class _WS:
         closed = False
 
-        async def receive(self):
+        async def receive(self) -> Any:
+            """Return the preset text message."""
             return raw_message
 
-        async def close(self):
+        async def close(self) -> None:
+            """Close it."""
             self.closed = True
 
-        def exception(self):
+        def exception(self) -> Exception:
+            """Return an exception."""
             return Exception("unused")
 
     client_init._ws = typing.cast(aiohttp.ClientWebSocketResponse, _WS())
@@ -394,13 +408,16 @@ async def test_client_receive_message_error(client_init: HAWebSocketClient) -> N
     class _WS:
         closed = False
 
-        async def receive(self):
+        async def receive(self) -> Any:
+            """Return the preset error message.""" ""
             return raw_message
 
-        async def close(self):
+        async def close(self) -> None:
+            """Close it.""" ""
             self.closed = True
 
-        def exception(self):
+        def exception(self) -> Exception:
+            """Return an exception."""
             return Exception("Test exception")
 
     client_init._ws = typing.cast(aiohttp.ClientWebSocketResponse, _WS())
@@ -419,13 +436,16 @@ async def test_client_receive_message_closed(client_init: HAWebSocketClient) -> 
     class _WS:
         closed = False
 
-        async def receive(self):
+        async def receive(self) -> Any:
+            """Return the preset closed message."""
             return raw_message
 
-        async def close(self):
+        async def close(self) -> None:
+            """Close it."""
             self.closed = True
 
-        def exception(self):
+        def exception(self) -> Exception:
+            """Return an exception."""
             return Exception("unused")
 
     client_init._ws = typing.cast(aiohttp.ClientWebSocketResponse, _WS())

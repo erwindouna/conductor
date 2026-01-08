@@ -10,8 +10,8 @@ from conductor.logger import setup_logging
 from .ha_websocket import HAWebSocketClient, HAWebSocketClientConfig
 
 # Yeah, I know... just for testing purposes.
-test_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI4OWM1OWRmZWM0ZGM0YTlkOTE0YTRkMDIwNzI4MWY0YyIsImlhdCI6MTc2NzgyNTYzNCwiZXhwIjoyMDgzMTg1NjM0fQ.VSr2Xakx85_OeUFtK5qdOcS14VvzmrpMX5fzOvrBIGg"
-test_url = "ws://192.168.2.53:8123/api/websocket"
+test_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI4OWM1OWRmZWM0ZGM0YTlkOTE0YTRkMDIwNzI4MWY0YyIsImlhdCI6MTc2NzgyNTYzNCwiZXhwIjoyMDgzMTg1NjM0fQ.VSr2Xakx85_OeUFtK5qdOcS14VvzmrpMX5fzOvrBIGg"  # pylint: disable=line-too-long, invalid-name
+test_url = "ws://192.168.2.53:8123/api/websocket"  # pylint: disable=invalid-name
 
 
 @asynccontextmanager
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        _LOGGER.info("Stopping Home Assistant WebSocket client")
+        _LOGGER.info("Stopping Home Assistant Websocket client")
         await ha_ws_client.stop()
     _LOGGER.info("Shutting down Conductor application")
 
