@@ -8,6 +8,7 @@ from typing import Any, Self, cast
 
 import aiohttp
 
+from conductor.engine import ConductorEngine
 from conductor.models.ha_ws import (
     AuthFrame,
     ResultFrame,
@@ -39,6 +40,7 @@ class HAWebSocketClient:
     ) -> None:
         """Initialize the handler."""
         self.config: HAWebSocketClientConfig = config
+        self._engine: ConductorEngine | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
         self._session: aiohttp.ClientSession | None = session
@@ -163,6 +165,9 @@ class HAWebSocketClient:
 
         if frame.type == WSType.EVENT:
             _LOGGER.info("Received event: %s", frame.model_dump())
+            if not self._engine.is_running:
+                _LOGGER.warning("Engine is not running; cannot process events")
+                return
             # Now here more logcan be added to process events as needed
             return
 

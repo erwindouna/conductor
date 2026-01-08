@@ -24,6 +24,11 @@ class ConductorEngine:
         self._task = asyncio.create_task(self._run(), name="conductor-engine")
         _LOGGER.info("Conductor engine started")
 
+    @property
+    def is_running(self) -> bool:
+        """Return whether the engine is running."""
+        return self._task is not None and not self._task.done()
+
     async def stop(self) -> None:
         """Stop the engine."""
         _LOGGER.info("Stopping Conductor engine")
