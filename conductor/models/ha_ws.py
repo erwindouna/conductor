@@ -38,15 +38,14 @@ class WSBase(IncomingFrame):
     model_config = ConfigDict(extra="forbid")
 
 
-# Registration machinery now that WSBase is defined
-TModel = TypeVar("TModel", bound=type[WSBase])
+T = TypeVar("T", bound=type[WSBase])
 FRAME_REGISTRY: dict[WSType, type[WSBase]] = {}
 
 
-def register_frame(frame_type: WSType) -> Callable[[TModel], TModel]:
-    """Decorator to register a WebSocket frame model by its `type`."""
+def register_frame(frame_type: WSType) -> Callable[[T], T]:
+    """Decorator to register a WebSocket frame model by its type."""
 
-    def decorator(model: TModel) -> TModel:
+    def decorator(model: T) -> T:
         FRAME_REGISTRY[frame_type] = model
         return model
 

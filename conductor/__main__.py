@@ -15,11 +15,11 @@ test_url = "ws://192.168.2.53:8123/api/websocket"  # pylint: disable=invalid-nam
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Lifespan context manager for Conductor."""
     setup_logging()
-    _LOGGER = logging.getLogger("conductor")
-    _LOGGER.info("Starting Conductor application")
+    logger = logging.getLogger("conductor")
+    logger.info("Starting Conductor application")
 
     ha_ws_config = HAWebSocketClientConfig(
         ws_url=test_url,
@@ -31,9 +31,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        _LOGGER.info("Stopping Home Assistant Websocket client")
+        logger.info("Stopping Home Assistant Websocket client")
         await ha_ws_client.stop()
-    _LOGGER.info("Shutting down Conductor application")
+    logger.info("Shutting down Conductor application")
 
 
 app = FastAPI(lifespan=lifespan)

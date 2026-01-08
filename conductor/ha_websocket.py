@@ -87,7 +87,7 @@ class HAWebSocketClient:
                 _LOGGER.warning("HA ws client task was cancelled: %s", err)
             except HAWebSocketError as err:
                 _LOGGER.error("Websocket error: %s", err)
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected websocket failure: %s", err)
 
             if self._stop.is_set():

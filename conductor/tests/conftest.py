@@ -1,5 +1,5 @@
 """Fixtures for testing HAWebSocketClient with a mock Home Assistant WebSocket server."""
-# pylint: disable=protected-access,
+# pylint: disable=protected-access, redefined-outer-name
 
 from __future__ import annotations
 
