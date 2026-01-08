@@ -163,7 +163,6 @@ async def test_client_connect_and_listen_error(client: HAWebSocketClient) -> Non
             self.type = type
 
     cast(_SupportsSetWSMessages, client).set_ws_messages([Msg(aiohttp.WSMsgType.ERROR)])
-    # ensure _ws.exception() returns something visible
     assert client._ws is not None
     with patch.object(client._ws, "exception", return_value=Exception("Test exception")):
         with pytest.raises(HAWebSocketError, match="Websocket error"):
