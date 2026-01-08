@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Self, cast
 
 import aiohttp
+from fastapi import FastAPI
 
 from conductor.engine import ConductorEngine
 from conductor.models.ha_ws import (
@@ -36,9 +37,13 @@ class HAWebSocketClient:
     """Home Assistant WebSocket handler."""
 
     def __init__(
-        self, config: HAWebSocketClientConfig, session: aiohttp.ClientSession | None = None
+        self,
+        app: FastAPI,
+        config: HAWebSocketClientConfig,
+        session: aiohttp.ClientSession | None = None,
     ) -> None:
         """Initialize the handler."""
+        self.app: FastAPI | None = app
         self.config: HAWebSocketClientConfig = config
         self._engine: ConductorEngine | None = None
         self._task: asyncio.Task[None] | None = None
@@ -161,14 +166,19 @@ class HAWebSocketClient:
             res = cast(ResultFrame, frame)
             if res.success is False:
                 _LOGGER.warning("Command failed: %s", res.model_dump())
+            await self.app.state.event_bus.publish(
+                topic="TOPIC_HA_EVENT_RESULT",
+                payload=res,
+            )
             return
 
         if frame.type == WSType.EVENT:
-            _LOGGER.info("Received event: %s", frame.model_dump())
-            if not self._engine.is_running:
-                _LOGGER.warning("Engine is not running; cannot process events")
-                return
-            # Now here more logcan be added to process events as needed
+            _LOGGER.debug("Received event: %s", frame.model_dump())
+            # Finally publish the event to the event bus
+            await self.app.state.event_bus.publish(
+                topic="ha.event." + frame.event.event_type,
+                payload=frame.event,
+            )
             return
 
     async def _subscribe_events(self, event_type: str | None = None) -> int:

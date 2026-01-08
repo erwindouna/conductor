@@ -3,14 +3,17 @@
 import asyncio
 import logging
 
+from fastapi import FastAPI
+
 _LOGGER = logging.getLogger(__name__)
 
 
 class ConductorEngine:
     """Conductor engine class."""
 
-    def __init__(self) -> None:
+    def __init__(self, app: FastAPI) -> None:
         """Initialize the engine."""
+        self.app: FastAPI = app
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
