@@ -74,65 +74,64 @@ async def ha_ws_client_init(ha_ws_server: web.Server) -> AsyncGenerator[HAWebSoc
 
 
 @pytest.fixture(name="client")
-def mock_ha_ws_client() -> HAWebSocketClient:
+async def mock_ha_ws_client() -> AsyncGenerator[HAWebSocketClient, None]:
     """Mocked HAWebSocketClient with controllable methods and websocket stub."""
 
-    client = HAWebSocketClient(
+    async with HAWebSocketClient(
         HAWebSocketClientConfig(ws_url="ws://homeassistant/api/websocket", token="test_token")
-    )
+    ) as client:
+        setattr(client, "connect", AsyncMock(return_value=None))
+        setattr(client, "authenticate", AsyncMock(return_value=None))
+        setattr(client, "_subscribe_events", AsyncMock(return_value=1))
 
-    client.connect = AsyncMock(return_value=None)
-    client.authenticate = AsyncMock(return_value=None)
-    client._subscribe_events = AsyncMock(return_value=1)
+        class _WSStub:
+            """Stub websocket to simulate aiohttp ClientWebSocketResponse.""" ""
 
-    class _WSStub:
-        """Stub websocket to simulate aiohttp ClientWebSocketResponse.""" ""
+            closed = False
 
-        closed = False
+            def __init__(self, messages: list[Any] | None = None) -> None:
+                """Initialize the stub."""
+                self._messages = messages or []
 
-        def __init__(self, messages: list[Any] | None = None) -> None:
-            """Initialize the stub."""
-            self._messages = messages or []
+            async def send_json(self, _: Any) -> None:
+                """Simulate sending a JSON message over the websocket."""
+                return None
 
-        async def send_json(self, _: Any) -> None:
-            """Simulate sending a JSON message over the websocket."""
-            return None
+            def exception(self):
+                """Simulate checking for websocket exceptions."""
+                return None
 
-        def exception(self):
-            """Simulate checking for websocket exceptions."""
-            return None
+            async def close(self) -> None:
+                """Close it."""
+                self.closed = True
 
-        async def close(self) -> None:
-            """Close it."""
-            self.closed = True
+            def __aiter__(self):
+                """Return an async iterator over the preset messages."""
 
-        def __aiter__(self):
-            """Return an async iterator over the preset messages."""
+                async def _gen():
+                    """Async generator yielding preset messages."""
+                    for m in self._messages:
+                        yield m
 
-            async def _gen():
-                """Async generator yielding preset messages."""
-                for m in self._messages:
-                    yield m
+                return _gen()
 
-            return _gen()
+        def set_ws_messages(messages: list[Any]) -> None:
+            """Set the messages which can be yielded. Hooray, this works!"""
+            client._ws = _WSStub(messages)
 
-    def set_ws_messages(messages: list[Any]) -> None:
-        """Set the messages which can be yielded. Hooray, this works!"""
-        client._ws = _WSStub(messages)
+        def set_ws_error(exc: Exception) -> None:
+            """Set an exception to be raised by the stub websocket."""
+            ws = _WSStub([])
 
-    def set_ws_error(exc: Exception) -> None:
-        """Set an exception to be raised by the stub websocket."""
-        ws = _WSStub([])
+            def _exc():
+                """Return the preset exception."""
+                # It needs to be a function to avoid not being raised
+                return exc
 
-        def _exc():
-            """Return the preset exception."""
-            # It needs to be a function to avoid not being raised
-            return exc
+            setattr(ws, "exception", _exc)
+            client._ws = ws
 
-        ws.exception = _exc
-        client._ws = ws
+        setattr(client, "set_ws_messages", set_ws_messages)
+        setattr(client, "set_ws_error", set_ws_error)
 
-    setattr(client, "set_ws_messages", set_ws_messages)
-    setattr(client, "set_ws_error", set_ws_error)
-
-    return client
+        yield client
