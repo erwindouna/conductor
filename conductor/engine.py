@@ -5,6 +5,8 @@ import logging
 
 from fastapi import FastAPI
 
+from .const import TOPIC_HA_EVENT_STATE_CHANGED
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -43,9 +45,11 @@ class ConductorEngine:
     async def _run(self) -> None:
         """Engine main loop."""
 
+        bus = await self.app.state.event_bus.subscribe(TOPIC_HA_EVENT_STATE_CHANGED)
         while not self._stop.is_set():
             try:
-                _LOGGER.info("Sleeping for 1 second in engine loop")
+                msg = await bus.get()
+                _LOGGER.info("Conductor engine received message: %s", msg)
                 await asyncio.sleep(1)
             except asyncio.CancelledError:
                 _LOGGER.info("Conductor engine task was cancelled")

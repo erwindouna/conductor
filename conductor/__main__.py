@@ -51,9 +51,3 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "ok"}

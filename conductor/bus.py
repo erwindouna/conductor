@@ -49,13 +49,14 @@ class ConductorEventBus:
 
     async def publish(self, topic: str, payload: Any) -> None:
         """Publish a message to a topic."""
-        _LOGGER.debug("Publishing message to topic: %s", topic)
+        _LOGGER.info("Publishing message to topic: %s, payload: %s", topic, payload)
         async with self._lock:
             subscribers = list(self._subs.get(topic, []))
 
         msg = BusMessage(topic=topic, payload=payload)
 
         for queue in subscribers:
+            _LOGGER.debug("Sending message to subscriber on topic: %s, to queue %s", topic, queue)
             try:
                 queue.put_nowait(msg)
             except asyncio.QueueFull:
