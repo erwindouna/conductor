@@ -90,6 +90,9 @@ async def mock_ha_ws_client() -> AsyncGenerator[HAWebSocketClient, None]:
 
         async def publish(self, *, topic: str, payload: Any) -> None:
             """Mock publish method."""
+            # Actualize this later on...
+            self.topic = topic
+            self.payload = payload
             return None
 
     state = type("_State", (), {})()
