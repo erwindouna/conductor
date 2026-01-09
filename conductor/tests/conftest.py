@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 from aiohttp import ClientSession, WSMsgType, web
 from aiohttp.test_utils import TestServer
+from fastapi import FastAPI
 
 from conductor.ha_websocket import HAWebSocketClient, HAWebSocketClientConfig
 
@@ -62,25 +63,43 @@ async def ha_ws_server(aiohttp_server) -> TestServer:
 @pytest.fixture(name="client_init")
 async def ha_ws_client_init(ha_ws_server: TestServer) -> AsyncGenerator[HAWebSocketClient, None]:
     """Return a configured HAWebSocketClient, not connected/authenticated."""
-    async with (
-        ClientSession() as session,
-        HAWebSocketClient(
+    app = FastAPI()
+
+    async with ClientSession() as session:
+        async with HAWebSocketClient(
             config=HAWebSocketClientConfig(
                 ws_url=str(ha_ws_server.make_url("/api/websocket")),
                 token="test_token",
             ),
+            app=app,
             session=session,
-        ) as client,
-    ):
-        yield client
+        ) as client:
+            yield client
 
 
 @pytest.fixture(name="client")
 async def mock_ha_ws_client() -> AsyncGenerator[HAWebSocketClient, None]:
     """Mocked HAWebSocketClient with controllable methods and websocket stub."""
 
+    app = AsyncMock(spec=FastAPI)
+
+    # Attach a minimal event_bus mock with async publish
+    # I need to expand this later on
+    class _Bus:
+        """Mock event bus."""
+
+        async def publish(self, *, topic: str, payload: Any) -> None:
+            """Mock publish method."""
+            return None
+
+    state = type("_State", (), {})()
+    setattr(state, "event_bus", _Bus())
+    setattr(app, "state", state)
     async with HAWebSocketClient(
-        HAWebSocketClientConfig(ws_url="ws://homeassistant/api/websocket", token="test_token")
+        config=HAWebSocketClientConfig(
+            ws_url="ws://homeassistant/api/websocket", token="test_token"
+        ),
+        app=app,
     ) as client:
         setattr(client, "connect", AsyncMock(return_value=None))
         setattr(client, "authenticate", AsyncMock(return_value=None))
